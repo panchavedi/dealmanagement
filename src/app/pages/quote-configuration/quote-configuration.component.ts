@@ -375,7 +375,38 @@ export class QuoteConfigurationComponent implements OnInit {
         finalize(() => (this.isLoading = false))
       )
       .subscribe({
-        next: (data) => this.applyQuoteData(data),
+        next: (data) => {
+          if (!data) return;
+
+          this.accountName = data.accountName || 'Acme Corp';
+          this.opportunityName = data.opportunityName || 'Expansion Deal';
+          this.opportunityId = data.opportunityId || '';
+          this.quoteNumber = data.quoteNumber || 'Q-DRAFT';
+          if (data.quoteId) this.quoteId = data.quoteId;
+
+          if (data.products && data.products.length > 0) {
+            this.products = data.products.map((p: any) => {
+              const isLooker = p.name ? p.name.toLowerCase().includes('looker') : false;
+              return {
+                id: p.id,
+                name: p.name,
+                icon: isLooker ? 'bar_chart' : 'cloud',
+                type: isLooker ? 'subscription' : 'commitment',
+                quoteLineId: p.quoteLineId,
+                categoryId: p.categoryId
+              };
+            });
+          } else if (data.productId || data.productName) {
+            const isLooker = data.productName?.toLowerCase().includes('looker');
+            this.products = [{
+              id: data.productId || 'p1',
+              name: data.productName || 'Product',
+              icon: isLooker ? 'bar_chart' : 'cloud',
+              type: isLooker ? 'subscription' : 'commitment',
+              categoryId: data.categoryId || ''
+            }];
+          }
+        },
         error: (err) => this.handleError('Error configuring quote', err)
       });
   }
@@ -414,42 +445,9 @@ export class QuoteConfigurationComponent implements OnInit {
         })
       )
       .subscribe({
-        next: (mappedData) => this.applyQuoteData(mappedData),
+        next: () => this.configureQuote(),
         error: (err) => this.handleError('Failed to load quote products', err)
       });
-  }
-
-  applyQuoteData(data: any) {
-    if (!data) return;
-
-    this.accountName = data.accountName || 'Acme Corp';
-    this.opportunityName = data.opportunityName || 'Expansion Deal';
-    this.opportunityId = data.opportunityId || '';
-    this.quoteNumber = data.quoteNumber || 'Q-DRAFT';
-    if (data.quoteId) this.quoteId = data.quoteId;
-
-    if (data.products && data.products.length > 0) {
-      this.products = data.products.map((p: any) => {
-        const isLooker = p.name ? p.name.toLowerCase().includes('looker') : false;
-        return {
-          id: p.id,
-          name: p.name,
-          icon: isLooker ? 'bar_chart' : 'cloud',
-          type: isLooker ? 'subscription' : 'commitment',
-          quoteLineId: p.quoteLineId,
-          categoryId: p.categoryId
-        };
-      });
-    } else if (data.productId || data.productName) {
-      const isLooker = data.productName?.toLowerCase().includes('looker');
-      this.products = [{
-        id: data.productId || 'p1',
-        name: data.productName || 'Product',
-        icon: isLooker ? 'bar_chart' : 'cloud',
-        type: isLooker ? 'subscription' : 'commitment',
-        categoryId: data.categoryId || ''
-      }];
-    }
   }
 
   private handleError(message: string, error?: any) {

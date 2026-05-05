@@ -227,7 +227,7 @@ export class QuotesContainerComponent implements OnInit {
 
         this.quoteService.setQuoteData({
             quoteId: quote.id,
-            quoteNumber: quote.number,
+            quoteNumber: "Q-" + quote.number,
             primaryContactName: quote.primaryContact
         });
 
