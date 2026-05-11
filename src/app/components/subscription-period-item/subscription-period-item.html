@@ -1,7 +1,8 @@
-<div class="bg-white rounded-xl border border-gray-200 shadow-sm mb-4 transition-all hover:shadow-md">
+<div class="bg-white rounded-xl shadow-sm mb-4 transition-all hover:shadow-md"
+    [ngClass]="hasErrors() ? 'border-2 border-red-400' : 'border border-gray-200'">
     <!-- Header -->
     <div class="px-6 pt-5 pb-5 flex items-center justify-between">
-        <div class="flex items-center gap-4">
+        <div class="flex items-center gap-3">
             <h4 class="text-[16px] font-semibold text-gray-800">{{ period.name }}</h4>
         </div>
 
@@ -47,6 +48,18 @@
                 expand_more
             </span>
         </div>
+    </div>
+
+    <!-- Validation messages box (below header) -->
+    <div *ngIf="hasErrors()" class="mx-6 mb-4 bg-white border border-red-200 rounded-lg px-4 py-3">
+        <p *ngFor="let error of errors" class="text-[13px] leading-relaxed"
+            [ngClass]="{
+                'text-red-600': error.messageType === 'error',
+                'text-yellow-600': error.messageType === 'warning',
+                'text-blue-600': error.messageType === 'info'
+            }">
+            {{ error.message }}
+        </p>
     </div>
 
     <!-- Content (Expanded) -->

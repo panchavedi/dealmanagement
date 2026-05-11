@@ -24,7 +24,7 @@
             <div *ngIf="isLookerSubscription">
                 <!-- SUBSCRIPTION DETAILS SECTION (Top Header) -->
                 <h4 class="text-gray-800 text-base font-bold mb-3">Subscription Details</h4>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
 
 
                     <!-- Billing Frequency -->
@@ -47,25 +47,6 @@
                         </div>
                     </div>
 
-                    <!-- Operation Type -->
-                    <div (click)="toggleOperationType(); $event.stopPropagation()"
-                        class="bg-slate-50 p-3 rounded-xl border border-transparent transition-all relative group h-[60px] flex flex-col justify-center shadow-sm">
-                        <label
-                            class="block text-[10px] text-gray-500 mb-0.5 uppercase tracking-wide font-medium">Operation
-                            Type</label>
-                        <div class="flex justify-between items-center">
-                            <div class="text-sm font-medium text-gray-900 truncate">{{ operationType || 'Select' }}
-                            </div>
-                            <span class="material-icons-outlined text-sm text-gray-400">arrow_drop_down</span>
-                        </div>
-                        <div *ngIf="operationTypeOpen" (click)="$event.stopPropagation()"
-                            class="absolute left-0 top-[60px] w-full bg-white rounded-lg shadow-xl border border-gray-100 z-[100] py-2 max-h-[200px] overflow-y-auto slim-scrollbar">
-                            <button *ngFor="let opt of operationTypeOptions" (click)="selectOperationType(opt)"
-                                class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 transition-colors">
-                                {{ opt }}
-                            </button>
-                        </div>
-                    </div>
 
                     <!-- Term Starts on -->
                     <div (click)="toggleTermStartsOn(); $event.stopPropagation()"
@@ -186,7 +167,9 @@
                         [frequency]="currentFrequency" [isFirst]="first" [isLast]="last"
                         [subscriptionStartDate]="termStartDate" [subscriptionEndDate]="termEndDate"
                         [previousPeriodEndDate]="i > 0 ? subscriptionPeriods[i-1].endDate : ''"
-                        [remainingQuota]="remainingQuota" (productChanged)="onSubscriptionProductChanged()"
+                        [remainingQuota]="remainingQuota" [periodIndex]="i"
+                        [errors]="getPeriodErrors(i)"
+                        (productChanged)="onSubscriptionProductChanged()"
                         (remove)="removeSubscriptionPeriod(i)">
                     </app-subscription-period-item>
 

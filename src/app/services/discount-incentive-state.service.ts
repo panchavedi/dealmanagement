@@ -233,4 +233,50 @@ export class DiscountIncentiveStateService {
     currentState.pendingTransactions = [];
     this.saveState(currentState, quoteId);
   }
+
+  public updatePendingTransactionItems(quoteId: string | undefined, mode: string, updatedItems: any[]) {
+    const edits = (updatedItems || [])
+      .filter(item => !item.deleted)
+      .map(item => ({ id: item.id, value: item.value, type: mode }));
+    const deletes = (updatedItems || [])
+      .filter(item => item.deleted)
+      .map(item => ({ id: item.id }));
+
+    this.applyPendingTransactionChanges(quoteId, mode, edits, deletes);
+  }
+
+  public applyPendingTransactionChanges(quoteId: string | undefined, mode: string, edits: any[], deletes: any[]) {
+    const currentState = this.loadState(quoteId);
+    const editMap = new Map((edits || []).map((edit: any) => [edit.id, edit]));
+    const deleteIds = new Set((deletes || []).map((item: any) => item.id));
+    const isDiscount = mode === 'discount';
+
+    currentState.pendingTransactions = (currentState.pendingTransactions || []).map((tx: any) => {
+      const records = tx.graph?.records || [];
+
+      tx.graph.records = records.filter((rec: any) => {
+        const record = rec.record || {};
+        const recordId = record.Product2Id || record.Id || rec.referenceId;
+        const matchesMode = isDiscount ? record.Discount !== undefined : record.Incentive__c !== undefined;
+
+        if (!matchesMode || !recordId) return true;
+        if (deleteIds.has(recordId)) return false;
+
+        const edit = editMap.get(recordId);
+        if (edit) {
+          if (isDiscount) {
+            record.Discount = Number(edit.value) || 0;
+          } else {
+            record.Incentive__c = edit.value;
+          }
+        }
+
+        return true;
+      });
+
+      return tx;
+    });
+
+    this.saveState(currentState, quoteId);
+  }
 }

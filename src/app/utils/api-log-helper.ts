@@ -74,7 +74,7 @@ export function getApiDetails(url: string, method: string, body?: any): ApiDetai
         // Check body for graphId if available
         if (body && body.graph && body.graph.graphId) {
             const graphId = body.graph.graphId;
-            if (graphId === 'createQuoteWithLines') {
+            if (graphId === 'createQuote') {
                 name = 'Create Quote';
                 description = 'Creates a new Quote with initial line items';
             } else if (graphId === 'updateQuoteWithFields') {

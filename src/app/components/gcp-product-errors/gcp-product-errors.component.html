@@ -1,0 +1,326 @@
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
+
+<div class="h-full w-full flex justify-end">
+    <div
+        class="w-full max-w-[950px] h-full bg-white rounded-l-2xl shadow-xl border-l border-y border-gray-200 flex flex-col overflow-hidden">
+
+        <!-- Header -->
+        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50/50">
+
+            <h2 class="text-lg font-bold text-gray-800">
+                {{ isDiscountMode ? 'Error Discounts' : 'Error Incentives' }}
+            </h2>
+
+            <button (click)="closeModal()"
+                class="text-gray-400 hover:text-gray-700 hover:bg-gray-200 p-1 rounded-full transition-colors">
+
+                <span class="material-icons-outlined">
+                    close
+                </span>
+
+            </button>
+
+        </div>
+
+        <!-- Bulk Update -->
+        <div *ngIf="isDiscountMode"
+            class="flex justify-end items-center gap-3 px-6 py-3 border-b border-gray-100 bg-white">
+
+            <span class="text-sm font-medium text-gray-600">
+                Bulk Update Discount:
+            </span>
+
+            <div class="relative flex items-center">
+
+                <input type="number" min="0" step="any" [value]="bulkValue === null ? '' : bulkValue"
+                    (input)="updateBulkValue($event)" (keydown)="restrictNumeric($event)" placeholder="0"
+                    class="w-24 border border-gray-300 rounded-md pl-3 pr-8 py-1.5 text-sm font-medium text-gray-800 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all" />
+
+                <span class="absolute right-3 text-sm font-bold text-gray-400 pointer-events-none">
+                    %
+                </span>
+
+            </div>
+
+            <button (click)="applyBulkValue()" [disabled]="bulkValue === null"
+                class="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-md text-sm font-medium transition-colors">
+
+                Apply
+
+            </button>
+
+        </div>
+
+        <!-- Table Container -->
+        <div class="flex-1 min-h-0 overflow-y-auto bg-white mx-6 border border-gray-200 mt-4 mb-2 rounded-xl shadow-sm">
+
+            <table class="w-full border-collapse table-fixed">
+
+                <!-- Table Header -->
+                <thead class="sticky top-0 bg-gray-50 z-10 border-b border-gray-200">
+
+                    <tr class="text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+
+                        <!-- Select All -->
+                        <th class="w-14 px-4 py-3 text-center">
+
+                            <div (click)="toggleSelectAll()"
+                                class="w-4 h-4 mx-auto border rounded-[4px] cursor-pointer flex items-center justify-center transition-colors"
+                                [class.bg-blue-600]="isAllSelected" [class.border-blue-600]="isAllSelected"
+                                [class.border-gray-300]="!isAllSelected" [class.bg-white]="!isAllSelected">
+
+                                <span *ngIf="isAllSelected"
+                                    class="material-icons-outlined text-white text-[12px] font-bold">
+
+                                    check
+
+                                </span>
+
+                            </div>
+
+                        </th>
+
+                        <!-- Product -->
+                        <th class="px-4 py-3 text-left w-[240px]">
+                            Product Group
+                        </th>
+
+                        <!-- Remarks -->
+                        <th class="px-4 py-3 text-left w-[360px]">
+                            Remarks
+                        </th>
+
+                        <!-- Discount / Incentive -->
+                        <th class="px-4 py-3 text-right pr-6 w-40">
+                            {{ isDiscountMode ? 'Discount' : 'Incentives' }}
+                        </th>
+
+                        <!-- Actions -->
+                        <th class="w-12"></th>
+
+                    </tr>
+
+                </thead>
+
+                <!-- Table Body -->
+                <tbody class="divide-y divide-gray-100">
+
+                    <!-- Loading -->
+                    <ng-container *ngIf="isPageLoading">
+
+                        <tr>
+
+                            <td colspan="5" class="text-center py-12">
+
+                                <div class="flex flex-col items-center justify-center gap-2">
+
+                                    <div
+                                        class="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin">
+                                    </div>
+
+                                    <p class="text-sm text-gray-400">
+                                        Loading...
+                                    </p>
+
+                                </div>
+
+                            </td>
+
+                        </tr>
+
+                    </ng-container>
+
+                    <!-- Data -->
+                    <ng-container *ngIf="!isPageLoading">
+
+                        <ng-container *ngIf="items.length > 0; else emptyState">
+
+                            <tr *ngFor="let item of items; trackBy: trackById"
+                                class="transition-colors group hover:bg-blue-50/50"
+                                [class.bg-blue-50]="item.selected && !item.deleted">
+
+                                <!-- Checkbox -->
+                                <td class="px-4 py-3 text-center cursor-pointer"
+                                    (click)="!item.deleted && toggleSelection(item.id)">
+
+                                    <div class="w-5 h-5 mx-auto border rounded-[5px] flex items-center justify-center transition-colors shadow-sm"
+                                        [class.bg-blue-600]="item.selected" [class.border-blue-600]="item.selected"
+                                        [class.border-gray-300]="!item.selected" [class.bg-white]="!item.selected"
+                                        [class.opacity-40]="item.deleted">
+
+                                        <span *ngIf="item.selected"
+                                            class="material-icons-outlined text-white text-[14px] font-bold">
+
+                                            check
+
+                                        </span>
+
+                                    </div>
+
+                                </td>
+
+                                <!-- Product -->
+                                <td class="px-4 py-3 text-sm font-medium text-gray-800 align-top"
+                                    [class.line-through]="item.deleted" [class.text-gray-400]="item.deleted">
+
+                                    <div class="break-words leading-5">
+
+                                        {{ item.name }}
+
+                                    </div>
+
+                                </td>
+
+                                <!-- Remarks -->
+                                <td class="px-4 py-3 align-top" [class.opacity-50]="item.deleted">
+
+                                    <div class="max-h-[90px] overflow-y-auto custom-scrollbar pr-1 rounded-md">
+
+                                        <div class="whitespace-pre-line break-words leading-5 text-sm font-medium px-1 py-0.5 transition-all"
+                                            [ngClass]="{
+
+        'text-red-600':
+            item.messageType === 'error',
+
+        'text-yellow-600':
+            item.messageType === 'warning',
+
+        'text-blue-600':
+            item.messageType === 'info'
+
+    }">
+
+                                            {{ item.remarks || '-' }}
+
+                                        </div>
+
+                                    </div>
+
+                                </td>
+
+                                <!-- Discount / Incentive -->
+                                <td class="px-4 py-3 text-right pr-6 align-top">
+
+                                    <div class="inline-flex items-center bg-gray-100 rounded-lg px-3 py-1.5 border border-transparent focus-within:bg-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition-all ml-auto relative"
+                                        [class.w-[84px]]="isDiscountMode" [class.w-[110px]]="!isDiscountMode"
+                                        [class.opacity-40]="item.deleted" [class.pointer-events-none]="item.deleted">
+
+                                        <!-- Incentive Symbol -->
+                                        <span *ngIf="!isDiscountMode" class="text-[12px] font-bold text-gray-400 mr-1">
+
+                                            $
+
+                                        </span>
+
+                                        <!-- Discount -->
+                                        <input *ngIf="isDiscountMode" type="number" step="any"
+                                            [value]="item.value === 0 ? '' : item.value"
+                                            (input)="updateItemValue(item.id, $event)"
+                                            (keydown)="restrictNumeric($event)"
+                                            (focus)="onDiscountFocus($event, item.value)" [disabled]="item.deleted"
+                                            placeholder="0"
+                                            class="w-full bg-transparent text-sm font-bold text-gray-900 outline-none text-right">
+
+                                        <!-- Incentive -->
+                                        <input *ngIf="!isDiscountMode" type="text" [value]="item.value"
+                                            (input)="updateItemValue(item.id, $event)" [disabled]="item.deleted"
+                                            class="w-full bg-transparent text-sm font-bold text-gray-900 outline-none text-right">
+
+                                        <!-- Percentage -->
+                                        <span *ngIf="isDiscountMode" class="text-[11px] font-bold text-gray-400 ml-1">
+
+                                            %
+
+                                        </span>
+
+                                    </div>
+
+                                </td>
+
+                                <!-- Delete / Restore -->
+                                <td class="px-2 text-center align-middle pt-1">
+
+                                    <div class="flex items-center justify-center h-full min-h-[24px]">
+
+                                        <!-- Restore -->
+                                        <button *ngIf="item.deleted" (click)="restoreItem(item.id)"
+                                            class="bg-white text-blue-600 p-0.5 rounded-full transition-all hover:scale-110 leading-none flex items-center">
+
+                                            <span class="material-icons-outlined text-[10px]">
+                                                add
+                                            </span>
+
+                                        </button>
+
+                                        <!-- Delete -->
+                                        <button *ngIf="!item.deleted" (click)="removeItem(item.id)"
+                                            class="bg-white text-black p-0.5 rounded-full transition-all hover:scale-110 leading-none flex items-center opacity-0 group-hover:opacity-100">
+
+                                            <span class="material-icons-outlined text-[10px]">
+                                                delete
+                                            </span>
+
+                                        </button>
+
+                                    </div>
+
+                                </td>
+
+                            </tr>
+
+                        </ng-container>
+
+                        <!-- Empty -->
+                        <ng-template #emptyState>
+
+                            <tr>
+
+                                <td colspan="5" class="text-center py-12 text-gray-500">
+
+                                    <div class="flex flex-col items-center justify-center gap-2">
+
+                                        <span class="material-icons-outlined text-4xl text-gray-300">
+                                            inventory_2
+                                        </span>
+
+                                        <p class="text-sm">
+                                            No products found.
+                                        </p>
+
+                                    </div>
+
+                                </td>
+
+                            </tr>
+
+                        </ng-template>
+
+                    </ng-container>
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+        <!-- Footer -->
+        <div class="px-6 py-4 border-t border-gray-200 bg-gray-50/50 flex items-center justify-end gap-3">
+
+            <button (click)="closeModal()"
+                class="px-5 py-2 rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-200 transition-colors">
+
+                Cancel
+
+            </button>
+
+            <button (click)="onSubmit()"
+                class="px-6 py-2 rounded-xl text-sm font-bold bg-blue-600 text-white shadow-md hover:bg-blue-700 hover:shadow-lg transition-all active:scale-[0.98]">
+
+                {{ isDiscountMode ? 'Update Discounts' : 'Update Incentives' }}
+
+            </button>
+
+        </div>
+
+    </div>
+</div>

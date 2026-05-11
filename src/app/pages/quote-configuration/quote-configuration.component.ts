@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, ViewChild, ViewChildren, QueryList } from '@angular/core';
+import { Component, OnInit, HostListener, inject, ViewChild, ViewChildren, QueryList } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, ActivatedRoute } from '@angular/router';
@@ -8,11 +8,12 @@ import { DetailsOfQuoteComponent } from '../../components/details-of-quote/detai
 import { CommitConfigurationComponent } from '../../components/commit-configuration/commit-configuration.component';
 import { SubscriptionConfigurationComponent } from '../../components/subscription-configuration/subscription-configuration.component';
 import { QuotePreviewComponent } from '../../components/quote-preview/quote-preview.component';
+import { CartService } from '../../services/cart.service';
 import { SalesforceApiService } from '../../services/salesforce-api.service';
 import { LoadingService } from '../../services/loading.service';
 import { ToastService } from '../../services/toast.service';
 import { ContextService } from '../../services/context.service';
-import { finalize, take, map, tap } from 'rxjs/operators';
+import { finalize, take, map, tap, switchMap } from 'rxjs/operators';
 
 @Component({
   selector: 'app-quote-configuration',
@@ -61,18 +62,40 @@ export class QuoteConfigurationComponent implements OnInit {
   private toastService = inject(ToastService);
   private contextService = inject(ContextService);
   private activatedRoute = inject(ActivatedRoute);
+  private cartService = inject(CartService);
 
   isLoading = true;
   accountName = '';
   opportunityName = '';
-  quoteNumber = '';
+  quoteName = '';
   quoteId = '';
   opportunityId = '';
 
   products: any[] = [];
   selectedItemId = sessionStorage.getItem('qc_selected_item') || 'quote_details';
+  isEditingName = false;
   annualContractValue = 0;
   isPrimary = false;
+
+  // Track validation errors per product for sidebar highlighting
+  productValidationErrors: Map<string, any[]> = new Map();
+
+  // Header validation panel state
+  hasValidationErrors: boolean = false;
+  validationPanelOpen: boolean = false;
+  submittedErrorMessages: { productId: string; productName: string; message: string; messageType?: string; category?: string }[] = [];
+
+  get groupedValidationMessages(): { productName: string; messages: { message: string; messageType: string }[] }[] {
+    const grouped = new Map<string, { message: string; messageType: string }[]>();
+    this.submittedErrorMessages.forEach(item => {
+      const key = item.productName || item.productId || 'Product';
+      if (!grouped.has(key)) {
+        grouped.set(key, []);
+      }
+      grouped.get(key)!.push({ message: item.message, messageType: item.messageType || 'info' });
+    });
+    return Array.from(grouped.entries()).map(([productName, messages]) => ({ productName, messages }));
+  }
 
   togglePrimary(event: any) {
     const isChecked = event.target.checked;
@@ -371,42 +394,10 @@ export class QuoteConfigurationComponent implements OnInit {
 
     this.quoteDataService.quoteData$
       .pipe(
-        take(1),
         finalize(() => (this.isLoading = false))
       )
       .subscribe({
-        next: (data) => {
-          if (!data) return;
-
-          this.accountName = data.accountName || 'Acme Corp';
-          this.opportunityName = data.opportunityName || 'Expansion Deal';
-          this.opportunityId = data.opportunityId || '';
-          this.quoteNumber = data.quoteNumber || 'Q-DRAFT';
-          if (data.quoteId) this.quoteId = data.quoteId;
-
-          if (data.products && data.products.length > 0) {
-            this.products = data.products.map((p: any) => {
-              const isLooker = p.name ? p.name.toLowerCase().includes('looker') : false;
-              return {
-                id: p.id,
-                name: p.name,
-                icon: isLooker ? 'bar_chart' : 'cloud',
-                type: isLooker ? 'subscription' : 'commitment',
-                quoteLineId: p.quoteLineId,
-                categoryId: p.categoryId
-              };
-            });
-          } else if (data.productId || data.productName) {
-            const isLooker = data.productName?.toLowerCase().includes('looker');
-            this.products = [{
-              id: data.productId || 'p1',
-              name: data.productName || 'Product',
-              icon: isLooker ? 'bar_chart' : 'cloud',
-              type: isLooker ? 'subscription' : 'commitment',
-              categoryId: data.categoryId || ''
-            }];
-          }
-        },
+        next: (data) => this.applyQuoteData(data),
         error: (err) => this.handleError('Error configuring quote', err)
       });
   }
@@ -424,30 +415,107 @@ export class QuoteConfigurationComponent implements OnInit {
     this.isLoading = true;
     this.loadingService.show();
 
-    this.sfApi.getQuoteProducts(this.quoteId)
-      .pipe(
-        take(1),
-        map((res: any) => ({
-          products: (res?.records ?? []).map((r: any) => ({
+    this.sfApi.loadConfiguratorInstance(this.quoteId).pipe(
+      take(1),
+      switchMap((loadRes: any) => {
+        const contextId = loadRes.contextId;
+        if (!contextId) throw new Error('No contextId received from load-instance');
+        return this.sfApi.getConfiguratorInstance(contextId);
+      }),
+      map((instanceRes: any) => {
+        const records = instanceRes.instance?.records || [];
+        const transactionRecord = instanceRes.transaction?.SalesTransaction?.[0];
+        const quoteRecord = records.find((r: any) => r.attributes?.type === 'Quote') || transactionRecord;
+
+        const salesTransactionName = instanceRes.SalesTransactionName ||
+          instanceRes.instance?.SalesTransactionName ||
+          instanceRes.quote?.SalesTransactionName ||
+          transactionRecord?.SalesTransactionName ||
+          quoteRecord?.SalesTransactionName ||
+          quoteRecord?.Name ||
+          instanceRes.quote?.Name ||
+          instanceRes.Name;
+
+        return {
+          quoteId: quoteRecord?.id || quoteRecord?.Id,
+          quoteName: salesTransactionName,
+          products: records.filter((r: any) => r.attributes?.type === 'QuoteLineItem').map((r: any) => ({
             id: r.Product2Id,
-            name: r.Name,
-            quoteLineId: r.quoteLineItemId,
+            name: r.Name || r.Product2?.Name,
+            quoteLineId: r.Id,
             categoryId: r.categoryId ?? ''
           }))
-        })),
-        tap((mappedData) => {
-          const existing = this.quoteDataService.getQuoteData();
-          this.quoteDataService.setQuoteData({ ...existing, ...mappedData });
-        }),
-        finalize(() => {
-          this.loadingService.hide();
-          this.isLoading = false;
-        })
-      )
+        };
+      }),
+      tap((mappedData) => {
+        const existing = this.quoteDataService.getQuoteData();
+
+        // Merge products to avoid losing locally added items that aren't yet in Salesforce records
+        const existingProducts = existing.products || [];
+        const newProducts = mappedData.products || [];
+
+        const productMap = new Map();
+        existingProducts.forEach((p: any) => productMap.set(p.id, p));
+        newProducts.forEach((p: any) => productMap.set(p.id, p));
+
+        const mergedProducts = Array.from(productMap.values());
+
+        this.quoteDataService.setQuoteData({
+          ...existing,
+          ...mappedData,
+          products: mergedProducts
+        });
+      }),
+      finalize(() => {
+        this.loadingService.hide();
+        this.isLoading = false;
+      })
+    )
       .subscribe({
-        next: () => this.configureQuote(),
+        next: (mappedData) => this.applyQuoteData(mappedData),
         error: (err) => this.handleError('Failed to load quote products', err)
       });
+  }
+
+  applyQuoteData(data: any) {
+    if (!data) return;
+
+    // Use nullish coalescing to preserve existing values if the new data doesn't have them
+    this.accountName = data.accountName || this.accountName || 'Acme Corp';
+    this.opportunityName = data.opportunityName || this.opportunityName || 'Expansion Deal';
+    this.opportunityId = data.opportunityId || this.opportunityId || '';
+
+    // Explicitly check for quoteName in data, then fall back to current value, then to 'Q-'
+    if (data.quoteName) {
+      this.quoteName = data.quoteName;
+    } else if (!this.quoteName) {
+      this.quoteName = 'Q-';
+    }
+
+    if (data.quoteId) this.quoteId = data.quoteId;
+
+    if (data.products && data.products.length > 0) {
+      this.products = data.products.map((p: any) => {
+        const isLooker = p.name ? p.name.toLowerCase().includes('looker') : false;
+        return {
+          id: p.id,
+          name: p.name,
+          icon: isLooker ? 'bar_chart' : 'cloud',
+          type: isLooker ? 'subscription' : 'commitment',
+          quoteLineId: p.quoteLineId,
+          categoryId: p.categoryId
+        };
+      });
+    } else if (data.productId || data.productName) {
+      const isLooker = data.productName?.toLowerCase().includes('looker');
+      this.products = [{
+        id: data.productId || 'p1',
+        name: data.productName || 'Product',
+        icon: isLooker ? 'bar_chart' : 'cloud',
+        type: isLooker ? 'subscription' : 'commitment',
+        categoryId: data.categoryId || ''
+      }];
+    }
   }
 
   private handleError(message: string, error?: any) {
@@ -477,10 +545,67 @@ export class QuoteConfigurationComponent implements OnInit {
   }
 
   onAddProduct() {
+    this.cartService.clearCart();
     this.router.navigate(['/products']);
   }
 
   formatCurrency(val: number) {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+  }
+
+  // --- Validation Error Handling ---
+
+  toggleValidationPanel(event?: Event) {
+    if (event) event.stopPropagation();
+    this.validationPanelOpen = !this.validationPanelOpen;
+  }
+
+  @HostListener('document:click')
+  onDocumentClick() {
+    // Close validation panel when clicking anywhere outside
+    if (this.validationPanelOpen) {
+      this.validationPanelOpen = false;
+    }
+  }
+
+  onValidationMessagesReceived(event: { productId: string; productName: string; messages: any[] }) {
+    if (event.messages && event.messages.length > 0) {
+      this.productValidationErrors.set(event.productId, event.messages);
+
+      // Build flat list of error messages for the header panel
+      // First remove old errors for this product, then add new ones
+      this.submittedErrorMessages = this.submittedErrorMessages.filter(m => m.productId !== event.productId);
+      event.messages.forEach(msg => {
+        this.submittedErrorMessages.push({
+          productId: event.productId,
+          productName: event.productName,
+          message: msg.message,
+          messageType: msg.messageType || 'info',
+          category: msg.category
+        });
+      });
+
+      this.hasValidationErrors = true;
+      this.validationPanelOpen = true;
+    } else {
+      // Clear errors for this product
+      this.productValidationErrors.delete(event.productId);
+      this.submittedErrorMessages = this.submittedErrorMessages.filter(m => m.productId !== event.productId);
+
+      // Check if any products still have errors
+      this.hasValidationErrors = this.submittedErrorMessages.length > 0;
+      if (!this.hasValidationErrors) {
+        this.validationPanelOpen = false;
+      }
+    }
+  }
+
+  hasProductErrors(productId: string): boolean {
+    return this.productValidationErrors.has(productId) &&
+      (this.productValidationErrors.get(productId)?.length || 0) > 0;
+  }
+
+  getProductErrors(productId: string): any[] {
+    return this.productValidationErrors.get(productId) || [];
   }
 }

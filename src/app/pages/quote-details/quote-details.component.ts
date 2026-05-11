@@ -884,8 +884,8 @@ export class QuoteDetailsComponent implements OnInit {
             if (quoteData.quoteId) {
                 this.contextService.updateContext({ quoteId: quoteData.quoteId });
             }
-            if (quoteData.quoteNumber) {
-                this.quoteId = quoteData.quoteNumber;
+            if (quoteData.quoteName) {
+                this.quoteId = quoteData.quoteName;
             }
             if (quoteData.primaryContactName) {
                 this.primaryContactName = quoteData.primaryContactName;
@@ -921,7 +921,7 @@ export class QuoteDetailsComponent implements OnInit {
                 this.salesChannel = ctx.salesChannel;
             }
 
-            // Prefer human-readable quoteNumber (if it doesn't look like a Salesforce ID)
+            // Prefer human-readable quoteName (if it doesn't look like a Salesforce ID)
             if (ctx.quoteId && (!this.quoteId || this.quoteId.startsWith('0Q0'))) {
                 this.quoteId = ctx.quoteId;
             }

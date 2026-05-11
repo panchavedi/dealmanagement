@@ -14,7 +14,7 @@ export class RcaApiService {
     private loadingService = inject(LoadingService);
     private toastService = inject(ToastService);
 
-    private readonly apiUrl = 'https://vector--rcaagivant.sandbox.my.salesforce.com/services/data/v65.0/connect/pcm/products';
+    private readonly apiUrl = 'https://vector--rcaagivant.sandbox.my.salesforce.com/services/data/v65.0/connect/cpq/products';
 
     private productsSubject = new BehaviorSubject<any[]>([]);
     products$ = this.productsSubject.asObservable();

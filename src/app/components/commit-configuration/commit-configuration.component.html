@@ -148,11 +148,46 @@
 
         <!-- Tab 2: Discounts -->
         <div *ngIf="activeTab === 'discounts'" class="animate-in fade-in duration-500">
-            <app-discounts-incentives [productId]="productId" [quoteId]="quoteId"
-                [quoteStartDate]="startDate" [quoteEndDate]="contractEndDate"
-                [remainingQuota]="remainingQuota">
-            </app-discounts-incentives>
+            <div>
+                <!-- Clickable error indicator on the discount block -->
+                <div *ngIf="hasValidationErrors" 
+                     (click)="openFirstErrorProductsPanel()"
+                     class="hidden">
+                    <span class="material-icons text-[14px]">error</span>
+                    {{ validationErrors.length }} Error{{ validationErrors.length > 1 ? 's' : '' }} — Click to fix
+                </div>
+                <button *ngIf="hasValidationErrors && getDiscountErrorProductCount() > 0 && getIncentiveErrorProductCount() > 0"
+                    (click)="openErrorProductsPanel(false)"
+                    class="hidden">
+                    <span class="material-icons text-[14px]">error</span>
+                    {{ getIncentiveErrorProductCount() }} Incentive Error{{ getIncentiveErrorProductCount() > 1 ? 's' : '' }}
+                </button>
+                <app-discounts-incentives [productId]="productId" [quoteId]="quoteId"
+                    [quoteStartDate]="startDate" [quoteEndDate]="contractEndDate"
+                    [remainingQuota]="remainingQuota"
+                    [hasDiscountErrors]="hasValidationErrors && getDiscountErrorProductCount() > 0"
+                    [hasIncentiveErrors]="hasValidationErrors && getIncentiveErrorProductCount() > 0"
+                    [discountErrorProductIds]="getDiscountErrorProductIds()"
+                    [incentiveErrorProductIds]="getIncentiveErrorProductIds()"
+                    (discountErrorBlockClicked)="openErrorProductsPanel(true)"
+                    (incentiveErrorBlockClicked)="openErrorProductsPanel(false)">
+                </app-discounts-incentives>
+            </div>
         </div>
 
+    </div>
+
+    <!-- GCP Product Errors Side Panel -->
+    <div *ngIf="showErrorProductsPanel" 
+         class="fixed inset-0 bg-black/30 z-[998] flex justify-end"
+         (click)="closeErrorProductsPanel()">
+        <div (click)="$event.stopPropagation()" class="h-full w-auto">
+            <app-gcp-product-errors
+                [items]="errorProductItems"
+                [isDiscountMode]="isDiscountErrorMode"
+                (close)="closeErrorProductsPanel()"
+                (submitPayload)="onErrorProductsSubmit($event)">
+            </app-gcp-product-errors>
+        </div>
     </div>
 </div>

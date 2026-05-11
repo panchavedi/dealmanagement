@@ -4,22 +4,25 @@
     <app-top-nav class="flex-shrink-0"></app-top-nav>
 
     <!-- 1. Header Card -->
-    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-3 mx-6 mt-2 animate-in fade-in slide-in-from-top duration-500 flex-shrink-0">
+    <div
+        class="bg-white rounded-lg shadow-sm border border-gray-200 p-3 mx-6 mt-2 animate-in fade-in slide-in-from-top duration-500 flex-shrink-0">
         <div class="max-w-[1600px] mx-auto flex justify-between items-center">
-            
+
             <div class="flex items-center gap-4">
-                <div class="w-10 h-10 bg-slate-50 rounded-lg flex items-center justify-center border border-slate-100 shadow-sm">
+                <div
+                    class="w-10 h-10 bg-slate-50 rounded-lg flex items-center justify-center border border-slate-100 shadow-sm">
                     <span class="material-icons text-[22px] text-blue-600">apartment</span>
                 </div>
 
                 <div class="flex flex-col">
                     <div class="flex items-center gap-2 mb-0.5">
-                        <h1 class="text-md font-bold text-slate-700 tracking-tight leading-none">{{ quoteNumber }}</h1>
-                        <span class="px-2 py-0.5 bg-green-500 bg-opacity-10 text-green-600 text-[9px] font-bold rounded-md tracking-wider border border-green-500/20">
+                        <h1 class="text-md font-bold text-slate-700 tracking-tight leading-none">{{ quoteName }}</h1>
+                        <span
+                            class="px-2 py-0.5 bg-green-500 bg-opacity-10 text-green-600 text-[9px] font-bold rounded-md tracking-wider border border-green-500/20">
                             Draft
                         </span>
                     </div>
-                    
+
                     <div class="flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
                         <span class="hover:text-blue-600 cursor-pointer transition-colors">{{ opportunityName }}</span>
                         <span class="text-slate-300 text-[10px]">›</span>
@@ -32,7 +35,8 @@
 
             <div class="flex items-center gap-6">
                 <!-- Product Quota Badge -->
-                <div class="flex items-center gap-2 bg-white border border-gray-200 rounded-full px-3 py-1 shadow-sm h-8">
+                <div
+                    class="flex items-center gap-2 bg-white border border-gray-200 rounded-full px-3 py-1 shadow-sm h-8">
                     <span class="material-icons-outlined text-[14px] text-blue-500">inventory_2</span>
                     <span class="text-[11px] font-semibold text-gray-600">
                         <span class="text-blue-600 font-bold">{{ remainingProductsQuota | number }}</span>
@@ -49,10 +53,56 @@
 
                 <div class="flex items-center gap-3 pr-4 border-r border-gray-100 h-8">
                     <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" class="sr-only peer" [checked]="isPrimary" (change)="togglePrimary($event)">
-                        <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-blue-600 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
+                        <input type="checkbox" class="sr-only peer" [checked]="isPrimary"
+                            (change)="togglePrimary($event)">
+                        <div
+                            class="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-blue-600 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all">
+                        </div>
                     </label>
                     <span class="text-[12px] font-medium text-slate-500">Mark as Primary</span>
+
+                    <div *ngIf="hasValidationErrors" class="relative">
+                        <button (click)="toggleValidationPanel($event)"
+                            class="w-7 h-7 rounded-full border-2 border-red-500 bg-red-50 text-red-600 flex items-center justify-center hover:bg-red-100 transition-colors shadow-md hover:shadow-lg font-bold animate-pulse"
+                            title="Click to view validation errors">
+                            <span class="text-lg font-bold">!</span>
+                        </button>
+
+                        <div *ngIf="validationPanelOpen" (click)="$event.stopPropagation()"
+                            class="absolute right-0 top-9 w-[360px] max-h-[350px] bg-white border-2 border-red-300 rounded-lg shadow-2xl z-[999] p-4 overflow-hidden flex flex-col">
+                            <div class="flex items-center justify-between mb-3 pb-2 border-b border-red-200">
+                                <div class="text-[13px] font-bold text-red-700 flex items-center gap-1">
+                                    <span class="material-icons-outlined text-[18px]">error</span>
+                                    Validation Errors ({{ submittedErrorMessages.length }})
+                                </div>
+                                <button (click)="toggleValidationPanel($event)"
+                                    class="text-slate-400 hover:text-slate-600 p-1">
+                                    <span class="material-icons-outlined text-[18px]">close</span>
+                                </button>
+                            </div>
+                            <div class="overflow-y-auto custom-scrollbar space-y-2 flex-1 pr-1">
+                                <div *ngFor="let item of submittedErrorMessages; let idx = index"
+                                    class="border-l-4 rounded-md p-3 transition-colors"
+                                    [ngClass]="{
+                                        'border-red-500 bg-red-50 hover:bg-red-100': item.messageType === 'error',
+                                        'border-yellow-500 bg-yellow-50 hover:bg-yellow-100': item.messageType === 'warning',
+                                        'border-blue-500 bg-blue-50 hover:bg-blue-100': item.messageType === 'info' || !item.messageType
+                                    }">
+                                    <div class="text-[13px] font-bold text-black mb-1">
+                                        {{ idx + 1 }}. {{ item.productName || item.productId || 'Product' }}
+                                    </div>
+                                    <p class="text-[12px] leading-tight"
+                                        [ngClass]="{
+                                            'text-red-700': item.messageType === 'error',
+                                            'text-yellow-700': item.messageType === 'warning',
+                                            'text-blue-700': item.messageType === 'info' || !item.messageType
+                                        }">
+                                        {{ item.message }}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <button class="p-1.5 hover:bg-slate-50 rounded-full transition-colors text-slate-400">
                     <span class="material-icons text-lg">more_vert</span>
@@ -63,45 +113,54 @@
 
     <!-- Main Content Body -->
     <div class="flex-1 flex overflow-hidden px-6 pb-2 pt-1 gap-1">
-        
+
         <!-- 2. Left Panel Sidebar -->
-        <aside class="w-[280px] bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col py-8 px-6 overflow-y-auto custom-scrollbar flex-shrink-0 animate-in fade-in slide-in-from-left duration-700">
-            
+        <aside
+            class="w-[280px] bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col py-8 px-6 overflow-y-auto custom-scrollbar flex-shrink-0 animate-in fade-in slide-in-from-left duration-700">
+
             <div class="mb-6">
                 <div class="flex items-center gap-2 mb-2">
                     <span class="material-icons text-slate-400 text-[22px]">settings</span>
                     <h3 class="font-bold text-[15px] text-slate-700">Configuration</h3>
                 </div>
-                
+
                 <div class="space-y-1 ml-2">
                     <!-- Static Item: Quote details -->
                     <div (click)="selectItem('quote_details')"
-                         [ngClass]="selectedItemId === 'quote_details' ? 'bg-blue-50 text-blue-700 rounded-full shadow-sm border border-blue-100/50' : 'text-slate-500 hover:text-slate-700'"
-                         class="flex items-center gap-2 px-4 py-2.5 cursor-pointer transition-all group">
+                        [ngClass]="selectedItemId === 'quote_details' ? 'bg-blue-50 text-blue-700 rounded-full shadow-sm border border-blue-100/50' : 'text-slate-500 hover:text-slate-700'"
+                        class="flex items-center gap-2 px-4 py-2.5 cursor-pointer transition-all group">
                         <span class="material-icons text-[20px]"
-                              [ngClass]="selectedItemId === 'quote_details' ? 'text-blue-700' : 'text-slate-300 group-hover:text-slate-500'">
+                            [ngClass]="selectedItemId === 'quote_details' ? 'text-blue-700' : 'text-slate-300 group-hover:text-slate-500'">
                             article
                         </span>
-                        <span class="text-[14px]" [ngClass]="selectedItemId === 'quote_details' ? 'font-bold' : 'font-medium'">
+                        <span class="text-[14px]"
+                            [ngClass]="selectedItemId === 'quote_details' ? 'font-bold' : 'font-medium'">
                             Quote details
                         </span>
                     </div>
 
                     <!-- Dynamic Items: Products -->
-                    <div *ngFor="let product of products" 
-                         (click)="selectItem(product.id)"
-                         [ngClass]="selectedItemId === product.id ? 'bg-blue-50 text-blue-700 rounded-full shadow-sm border border-blue-100/50' : 'text-slate-500 hover:text-slate-700'"
-                         class="flex items-center gap-2 px-4 py-2.5 cursor-pointer transition-all group">
-                        <span class="material-icons text-[20px]" 
-                              [ngClass]="selectedItemId === product.id ? 'text-blue-700' : 'text-slate-300 group-hover:text-slate-500'">
+                    <div *ngFor="let product of products" (click)="selectItem(product.id)" [ngClass]="{
+                            'bg-blue-50 text-blue-700 rounded-full shadow-sm border border-blue-100/50': selectedItemId === product.id && !hasProductErrors(product.id),
+                            'bg-red-50 text-blue-700 rounded-full shadow-sm border-2 border-red-300': hasProductErrors(product.id),
+                            'text-slate-500 hover:text-slate-700': selectedItemId !== product.id && !hasProductErrors(product.id)
+                        }" class="flex items-center gap-2 px-4 py-2.5 cursor-pointer transition-all group">
+                        <span class="material-icons text-[20px]" [ngClass]="{
+                                'text-blue-700': selectedItemId === product.id || hasProductErrors(product.id),
+                                'text-slate-300 group-hover:text-slate-500': selectedItemId !== product.id && !hasProductErrors(product.id)
+                            }">
                             {{ product.icon }}
                         </span>
-                        <span class="text-[14px]" [ngClass]="selectedItemId === product.id ? 'font-bold' : 'font-medium'">
+                        <span class="text-[14px]" [ngClass]="{
+                                'font-bold': selectedItemId === product.id || hasProductErrors(product.id),
+                                'font-medium': selectedItemId !== product.id && !hasProductErrors(product.id)
+                            }">
                             {{ product.name }}
                         </span>
                     </div>
 
-                    <div (click)="onAddProduct()" class="flex items-center gap-2 px-4 py-3 text-blue-600 hover:text-blue-700 cursor-pointer group transition-all mt-2">
+                    <div (click)="onAddProduct()"
+                        class="flex items-center gap-2 px-4 py-3 text-blue-600 hover:text-blue-700 cursor-pointer group transition-all mt-2">
                         <span class="material-icons text-[20px]">add</span>
                         <span class="text-[14px] font-bold">Add Product</span>
                     </div>
@@ -123,8 +182,9 @@
         </aside>
 
         <!-- 3. Right Content Area (Dynamic Views) -->
-        <main class="flex-1 bg-white rounded-xl shadow-sm border border-gray-200 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-right duration-700">
-            
+        <main
+            class="flex-1 bg-white rounded-xl shadow-sm border border-gray-200 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-right duration-700">
+
             <!-- Conditional View Switching -->
             <div [hidden]="selectedItemId !== 'quote_details'">
                 <app-details-of-quote></app-details-of-quote>
@@ -133,22 +193,17 @@
             <!-- Dynamic Configurations via ngFor to preserve state across tabs -->
             <ng-container *ngFor="let product of products">
                 <div [hidden]="selectedItemId !== product.id">
-                    <app-commit-configuration *ngIf="product.type === 'commitment'" 
-                        [productId]="product.id" 
-                        [quoteLineId]="product.quoteLineId" 
-                        [accountName]="accountName"
-                        [quoteId]="quoteId"
-                        [remainingQuota]="remainingProductsQuota">
+                    <app-commit-configuration *ngIf="product.type === 'commitment'" [productId]="product.id"
+                        [productName]="product.name" [quoteLineId]="product.quoteLineId" [accountName]="accountName"
+                        [quoteId]="quoteId" [remainingQuota]="remainingProductsQuota"
+                        (validationMessagesReceived)="onValidationMessagesReceived($event)">
                     </app-commit-configuration>
 
-                    <app-subscription-configuration *ngIf="product.type === 'subscription'"
-                        [productId]="product.id" 
-                        [productName]="product.name"
-                        [categoryId]="product.categoryId"
-                        [bundleQuoteLineId]="product.quoteLineId" 
-                        [accountName]="accountName"
-                        [remainingQuota]="remainingProductsQuota"
-                        [quoteId]="quoteId">
+                    <app-subscription-configuration *ngIf="product.type === 'subscription'" [productId]="product.id"
+                        [productName]="product.name" [categoryId]="product.categoryId"
+                        [bundleQuoteLineId]="product.quoteLineId" [accountName]="accountName"
+                        [remainingQuota]="remainingProductsQuota" [quoteId]="quoteId"
+                        (validationMessagesReceived)="onValidationMessagesReceived($event)">
                     </app-subscription-configuration>
                 </div>
             </ng-container>
@@ -156,26 +211,31 @@
     </div>
 
     <!-- 4. Footer Bar -->
-    <footer class="bg-white border-t border-gray-200 py-4 flex-shrink-0 animate-in fade-in slide-in-from-bottom duration-500">
+    <footer
+        class="bg-white border-t border-gray-200 py-4 flex-shrink-0 animate-in fade-in slide-in-from-bottom duration-500">
         <div class="max-w-[1600px] w-full mx-auto flex justify-between items-center px-8">
-            
+
             <!-- Left Side: Contract Values -->
             <div class="flex items-center gap-8">
                 <div class="flex flex-col">
                     <span class="text-[12px] font-medium text-slate-500">Annual Contract Value</span>
-                    <span class="text-md font-bold text-slate-800 tracking-tight leading-none">{{ formatCurrency(annualContractValue) }}</span>
+                    <span class="text-md font-bold text-slate-800 tracking-tight leading-none">{{
+                        formatCurrency(annualContractValue) }}</span>
                 </div>
                 <div class="h-8 w-[1px] bg-slate-100 mx-2"></div>
                 <div class="flex flex-col">
                     <span class="text-[12px] font-medium text-slate-500">Total Contract Value</span>
-                    <span class="text-md font-bold text-slate-800 tracking-tight leading-none">{{ formatCurrency(totalContractValue) }}</span>
+                    <span class="text-md font-bold text-slate-800 tracking-tight leading-none">{{
+                        formatCurrency(totalContractValue) }}</span>
                 </div>
             </div>
 
             <!-- Right Side: Actions -->
             <div class="flex items-center gap-3">
-                <button (click)="openPreview()" class="bg-white text-blue-600 border border-gray-200 hover:bg-blue-50/30 px-6 py-2 rounded-full text-sm font-bold transition-all">Preview</button>
-                <button (click)="resetForm()" class="bg-white text-blue-600 border border-gray-200 hover:bg-blue-50/30 px-6 py-2 rounded-full text-sm font-bold transition-all">Cancel</button>
+                <button (click)="openPreview()"
+                    class="bg-white text-blue-600 border border-gray-200 hover:bg-blue-50/30 px-6 py-2 rounded-full text-sm font-bold transition-all">Preview</button>
+                <button (click)="resetForm()"
+                    class="bg-white text-blue-600 border border-gray-200 hover:bg-blue-50/30 px-6 py-2 rounded-full text-sm font-bold transition-all">Cancel</button>
                 <button (click)="onSave()" [disabled]="isSaveDisabled"
                     [ngClass]="isSaveDisabled ? 'opacity-50 cursor-not-allowed bg-gray-50 text-gray-400 border-gray-200' : 'bg-white text-blue-600 border border-gray-200 hover:bg-blue-50/30'"
                     class="px-6 py-2 rounded-full text-sm font-bold border transition-all">Save</button>
@@ -189,20 +249,13 @@
     </footer>
 
     <!-- Quote Preview Modal -->
-    <app-quote-preview 
-        [showPreviewPopup]="previewState.show"
-        [previewData]="previewState.data"
+    <app-quote-preview [showPreviewPopup]="previewState.show" [previewData]="previewState.data"
         [previewCommitments]="previewState.previewCommitments"
         [commitmentDetailsOnly]="previewState.commitmentDetailsOnly"
         [previewProductsWithoutDiscounts]="previewState.previewProductsWithoutDiscounts"
-        [isLookerSubscription]="previewState.isLooker"
-        [totalContractValue]="previewState.tcv"
-        [totalIncentivesValue]="previewState.incentives"
-        [totalTerms]="previewState.terms"
-        [startDate]="previewState.startDate"
-        [expirationDate]="previewState.expirationDate"
-        [accountName]="accountName"
-        [opportunityName]="opportunityName"
-        (close)="closePreview()">
+        [isLookerSubscription]="previewState.isLooker" [totalContractValue]="previewState.tcv"
+        [totalIncentivesValue]="previewState.incentives" [totalTerms]="previewState.terms"
+        [startDate]="previewState.startDate" [expirationDate]="previewState.expirationDate" [accountName]="accountName"
+        [opportunityName]="opportunityName" (close)="closePreview()">
     </app-quote-preview>
 </div>

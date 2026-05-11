@@ -1,4 +1,4 @@
-import { Component, Input, OnChanges, SimpleChanges, inject, ElementRef, HostListener, OnDestroy } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnChanges, SimpleChanges, inject, ElementRef, HostListener, OnDestroy } from '@angular/core';
 import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { RcaApiService } from '../../services/rca-api.service';
@@ -28,6 +28,12 @@ export class DiscountsIncentivesComponent implements OnChanges, OnDestroy {
     @Input() quoteEndDate: string | null = null;
     @Input() isLookerSubscription: boolean = false;
     @Input() quoteId: string | null = null;
+    @Input() hasDiscountErrors: boolean = false;
+    @Input() hasIncentiveErrors: boolean = false;
+    @Input() discountErrorProductIds: string[] = [];
+    @Input() incentiveErrorProductIds: string[] = [];
+    @Output() discountErrorBlockClicked = new EventEmitter<void>();
+    @Output() incentiveErrorBlockClicked = new EventEmitter<void>();
     @Input() set existingLineItems(items: any[]) {
         if (items && items.length > 0) {
             this.loadFromExisting(items);
@@ -396,6 +402,42 @@ export class DiscountsIncentivesComponent implements OnChanges, OnDestroy {
             dropdownOptions: this.dropdownOptions,
             selectedDropdownOption: this.selectedDropdownOption
         }, quoteId);
+    }
+
+    resolveProductDisplayName(productId: string): string {
+        if (!productId) return '';
+
+        const sources = [
+            ...Array.from(this.persistentSelectedGroups.values()),
+            ...Array.from(this.persistentSelectedIndividuals.values()),
+            ...Array.from(this.persistentIncentiveGroups.values()),
+            ...this.productGroups,
+            ...this.individualProducts,
+            ...this.dropdownOptions
+        ];
+
+        const match = sources.find((item: any) =>
+            item?.id === productId ||
+            item?.Id === productId ||
+            item?.productId === productId
+        );
+
+        return match?.name || match?.Name || match?.ProductName || '';
+    }
+
+    hasDiscountItemErrors(item: any): boolean {
+        return this.hasItemErrors(item, this.discountErrorProductIds);
+    }
+
+    hasIncentiveItemErrors(item: any): boolean {
+        return this.hasItemErrors(item, this.incentiveErrorProductIds);
+    }
+
+    private hasItemErrors(item: any, errorProductIds: string[]): boolean {
+        if (!errorProductIds?.length) return false;
+        const productIds = item?.productIds || [];
+        if (productIds.length === 0) return false;
+        return productIds.some((id: string) => errorProductIds.includes(id));
     }
 
     ngOnChanges(changes: any) {
@@ -2035,6 +2077,7 @@ export class DiscountsIncentivesComponent implements OnChanges, OnDestroy {
                 "attributes": { "type": "QuoteLineItem", "method": "POST" },
                 "QuoteId": quoteId,
                 "Product2Id": item.id,
+                "ProductName": item.name,
                 "PricebookEntryId": item.pricebookEntryId || DEFAULT_PBE_ID,
                 "StartDate": this.activeDiscountPeriod?.startDate,
                 "EndDate": this.activeDiscountPeriod?.endDate,
@@ -2082,7 +2125,7 @@ export class DiscountsIncentivesComponent implements OnChanges, OnDestroy {
         });
 
         // Add to UI summary
-        this.addDiscountToUI('Bulk Upload', 0, selectedItems.length, 'CSV Data', selectedItems.length, responseTimeSecs);
+        this.addDiscountToUI('Bulk Upload', 0, selectedItems.length, 'CSV Data', selectedItems.length, responseTimeSecs, selectedItems.map(item => item.id));
 
         this.saveCurrentState(); // Persist bulk IDs
         this.dataFetched = false;
@@ -2135,6 +2178,7 @@ export class DiscountsIncentivesComponent implements OnChanges, OnDestroy {
                         "attributes": { "type": "QuoteLineItem", "method": "POST" },
                         "QuoteId": quoteId,
                         "Product2Id": productId,
+                        "ProductName": item.name,
                         "PricebookEntryId": pbeId,
                         "StartDate": this.activeDiscountPeriod?.startDate,
                         "EndDate": this.activeDiscountPeriod?.endDate,
@@ -2172,7 +2216,7 @@ export class DiscountsIncentivesComponent implements OnChanges, OnDestroy {
                     "taxPref": "Skip",
                     "contextDetails": {},
                     "graph": {
-                        "graphId": "createQuoteWithLines",
+                        "graphId": "createQuote",
                         "records": records
                     }
                 };
@@ -2190,7 +2234,7 @@ export class DiscountsIncentivesComponent implements OnChanges, OnDestroy {
                 // Count committed items = selected groups + selected individuals (line items added)
                 const committedCount = this.persistentSelectedGroups.size + selectedIndividualCount;
 
-                this.addDiscountToUI(this.discountForm.granularity, selectedGroupCount, selectedIndividualCount, discValue, committedCount, responseTimeSecs);
+                this.addDiscountToUI(this.discountForm.granularity, selectedGroupCount, selectedIndividualCount, discValue, committedCount, responseTimeSecs, selectedItems.map(item => item.id));
                 this.resetSelections();
                 // Reset dataFetched so that next time the component is opened it can refresh data if needed
                 this.dataFetched = false;
@@ -2203,7 +2247,7 @@ export class DiscountsIncentivesComponent implements OnChanges, OnDestroy {
                 this.loadingService.hide();
     }
 
-    private addDiscountToUI(granularity: string, groupCount: number, individualCount: number, value: string, committedProductCount: number = 0, responseTimeSecs?: string) {
+    private addDiscountToUI(granularity: string, groupCount: number, individualCount: number, value: string, committedProductCount: number = 0, responseTimeSecs?: string, productIds: string[] = []) {
 
         let title = `${granularity} Discount - Flat Rate (%)`;
         let subtext = `${groupCount} Product Groups, ${individualCount} Products ${responseTimeSecs ? '(' + responseTimeSecs + 's)' : ''}`;
@@ -2221,10 +2265,44 @@ export class DiscountsIncentivesComponent implements OnChanges, OnDestroy {
             type: 'discount',
             granularity: granularity,
             itemCount: committedProductCount,
-            responseTime: responseTimeSecs
+            responseTime: responseTimeSecs,
+            productIds
         };
         if (!this.activeDiscountPeriod) return;
         this.activeDiscountPeriod.activeDiscounts.push(newDiscount); // Add to bottom
+    }
+
+    applyErrorProductUpdates(payload: any) {
+        const mode = payload?.mode;
+        const activeItems = (payload?.updatedItems || []).filter((item: any) => !item.deleted);
+        const activeCount = activeItems.length;
+        const values = activeItems.map((item: any) => item.value).filter((value: any) => value !== null && value !== undefined && value !== '');
+        const uniqueValues = Array.from(new Set(values.map((value: any) => String(value))));
+
+        if (mode === 'discount') {
+            const displayValue = uniqueValues.length === 1 ? `${uniqueValues[0]}%` : 'Updated';
+            this.discountPeriods.forEach((period: any) => {
+                period.activeDiscounts.forEach((discount: any) => {
+                    discount.value = displayValue;
+                    discount.itemCount = activeCount;
+                    if (discount.responseTime) {
+                        discount.subtext = discount.subtext?.replace(/\(([^)]*)s\)/, `(${discount.responseTime}s)`) || discount.subtext;
+                    }
+                });
+            });
+        }
+
+        if (mode === 'incentive') {
+            const displayValue = uniqueValues.length === 1 ? `$${uniqueValues[0]}` : `${activeCount} group${activeCount !== 1 ? 's' : ''} with custom amounts`;
+            this.incentivePeriods.forEach((period: any) => {
+                period.activeIncentives.forEach((incentive: any) => {
+                    incentive.value = displayValue;
+                    incentive.itemCount = activeCount;
+                });
+            });
+        }
+
+        this.saveCurrentState();
     }
 
     addIncentive() {
@@ -2291,6 +2369,7 @@ export class DiscountsIncentivesComponent implements OnChanges, OnDestroy {
                         "attributes": { "type": "QuoteLineItem", "method": "POST" },
                         "QuoteId": quoteId,
                         "Product2Id": item.id,
+                        "ProductName": item.name,
                         "PricebookEntryId": item.pbeId || '01uDz00000dqLY8IAM',
                         "StartDate": this.activeIncentivePeriod.startDate,
                         "EndDate": this.activeIncentivePeriod.endDate,
@@ -2341,7 +2420,8 @@ export class DiscountsIncentivesComponent implements OnChanges, OnDestroy {
                     value: displayValue,
                     type: 'incentive',
                     itemCount: groupCount,
-                    responseTime: responseTimeSecs
+                    responseTime: responseTimeSecs,
+                    productIds: resolvedItems.map(item => item.id)
                 });
                 this.incentiveForm.amount = '';
                 this.persistentIncentiveGroups.clear();

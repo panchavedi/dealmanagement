@@ -7,6 +7,8 @@ import { finalize, switchMap } from 'rxjs/operators';
 import { of } from 'rxjs';
 import { RcaApiService } from '../../services/rca-api.service';
 import { QuoteDataService } from '../../services/quote-data.service';
+import { CartService } from '../../services/cart.service';
+import { DiscountIncentiveStateService } from '../../services/discount-incentive-state.service';
 
 interface Opportunity {
     id: string;
@@ -66,6 +68,8 @@ export class OpportunitiesComponent implements OnInit {
     private contextService = inject(ContextService);
     private rcaApi = inject(RcaApiService);
     private quoteService = inject(QuoteDataService);
+    private cartService = inject(CartService);
+    private discountStateService = inject(DiscountIncentiveStateService);
     protected Math = Math;
 
     opportunities: Opportunity[] = [];
@@ -78,25 +82,12 @@ export class OpportunitiesComponent implements OnInit {
     private rawDetailedRecords: any[] = [];
 
     ngOnInit(): void {
-        this.clearSessionData();
         this.fetchOpportunities();
     }
 
-    private clearSessionData(): void {
-        const keysToRemove = [];
-        for (let i = 0; i < sessionStorage.length; i++) {
-            const key = sessionStorage.key(i);
-            if (key) {
-                // Keep access token and related auth keys safely
-                const kLower = key.toLowerCase();
-                if (kLower.includes('token') || kLower.includes('auth') || kLower.includes('expire')) {
-                    continue;
-                }
-                keysToRemove.push(key);
-            }
-        }
 
-        keysToRemove.forEach(key => sessionStorage.removeItem(key));
+    private clearSessionData(): void {
+        // Redundant as it is handled by AppComponent now
     }
 
     debugTokenStatus(): void {
@@ -160,6 +151,7 @@ export class OpportunitiesComponent implements OnInit {
                         salesChannel: rawOpp.Sales_Channel__c || 'Direct'
                     });
 
+                    this.cartService.clearCart();
                     this.rcaApi.getProducts();
                     this.router.navigate(['/products'], {
                         queryParams: { opportunityId: rawOpp.Id }

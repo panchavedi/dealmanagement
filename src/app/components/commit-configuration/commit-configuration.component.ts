@@ -1,7 +1,8 @@
-import { Component, Input, OnInit, inject, HostListener, ViewChild } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnInit, inject, HostListener, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DiscountsIncentivesComponent } from '../discounts-incentives/discounts-incentives.component';
+import { GcpProductErrorsComponent } from '../gcp-product-errors/gcp-product-errors.component';
 import { ToastService } from '../../services/toast.service';
 import { QuoteDataService } from '../../services/quote-data.service';
 import { ContextService } from '../../services/context.service';
@@ -14,7 +15,7 @@ import { switchMap, map, concatMap, toArray } from 'rxjs/operators';
 @Component({
   selector: 'app-commit-configuration',
   standalone: true,
-  imports: [CommonModule, FormsModule, DiscountsIncentivesComponent],
+  imports: [CommonModule, FormsModule, DiscountsIncentivesComponent, GcpProductErrorsComponent],
   templateUrl: './commit-configuration.component.html',
   styles: [`
     .custom-scrollbar::-webkit-scrollbar {
@@ -40,6 +41,7 @@ export class CommitConfigurationComponent implements OnInit {
   @ViewChild(DiscountsIncentivesComponent) discountsIncentives?: DiscountsIncentivesComponent;
 
   @Input() productId: string = '';
+  @Input() productName: string = 'Google Cloud Platform RCA';
   @Input() quoteLineId: string = '';
   @Input() accountName: string = '';
   @Input() quoteId: string = '';
@@ -48,6 +50,15 @@ export class CommitConfigurationComponent implements OnInit {
   activeTab: 'details' | 'discounts' = 'details';
   commitmentPeriods: any[] = [{ months: null, amount: null, isCollapsed: false }];
   activeMenuIndex: number | null = null;
+
+  // Validation error state
+  validationErrors: { message: string; messageType: string; category: string; relatedRecordId?: string }[] = [];
+  hasValidationErrors: boolean = false;
+  showErrorProductsPanel: boolean = false;
+  errorProductItems: any[] = [];
+  isDiscountErrorMode: boolean = true;
+
+  @Output() validationMessagesReceived = new EventEmitter<{ productId: string; productName: string; messages: any[] }>();
   
   opportunityName: string = '';
   startDate: string = new Date().toLocaleDateString('en-CA');
@@ -491,116 +502,394 @@ export class CommitConfigurationComponent implements OnInit {
     this.onSave();
   }
 
+  clearValidationErrors() {
+    this.validationErrors = [];
+    this.hasValidationErrors = false;
+  }
+
+  private parseConfiguratorMessages(response: any): { errors: any[]; warnings: any[]; infos: any[]; all: any[]; hasMessages: boolean } {
+    const errors: any[] = [];
+    const warnings: any[] = [];
+    const infos: any[] = [];
+    const all: any[] = [];
+
+    const messages = response?.configuratorMessages;
+    if (!messages || typeof messages !== 'object') {
+      return { errors, warnings, infos, all, hasMessages: false };
+    }
+
+    Object.keys(messages).forEach(key => {
+      const msgArray = messages[key];
+      if (!Array.isArray(msgArray)) return;
+
+      msgArray.forEach((msg: any) => {
+        const entry = {
+          message: msg.message,
+          messageType: msg.messageType || 'info',
+          category: msg.category,
+          primaryRecordId: msg.primaryRecordId,
+          relatedRecordId: msg.relatedRecordId || key
+        };
+
+        all.push(entry);
+        if (msg.messageType === 'error') {
+          errors.push(entry);
+        } else if (msg.messageType === 'warning') {
+          warnings.push(entry);
+        } else {
+          infos.push(entry);
+        }
+      });
+    });
+
+    return { errors, warnings, infos, all, hasMessages: all.length > 0 };
+  }
+
+  openErrorProductsPanel(isDiscount: boolean = true) {
+    this.isDiscountErrorMode = isDiscount;
+    this.errorProductItems = this.getErrorProductItems(isDiscount);
+    this.showErrorProductsPanel = true;
+  }
+
+  openFirstErrorProductsPanel() {
+    const hasDiscountProducts = this.getDiscountErrorProductCount() > 0;
+    const hasIncentiveProducts = this.getIncentiveErrorProductCount() > 0;
+    this.openErrorProductsPanel(hasDiscountProducts || !hasIncentiveProducts);
+  }
+
+  getDiscountErrorProductCount(): number {
+    return this.getErrorProductItems(true).length;
+  }
+
+  getIncentiveErrorProductCount(): number {
+    return this.getErrorProductItems(false).length;
+  }
+
+  getDiscountErrorProductIds(): string[] {
+    return this.getErrorProductItems(true).map(item => item.product2Id || item.id).filter(Boolean);
+  }
+
+  getIncentiveErrorProductIds(): string[] {
+    return this.getErrorProductItems(false).map(item => item.product2Id || item.id).filter(Boolean);
+  }
+
+  private getErrorProductItems(isDiscount: boolean): any[] {
+    // Build product items from the pending transactions for the error panel
+    const quoteId = this.quoteId || this.contextService.currentContext?.quoteId || '';
+    const pendingTransactions = this.discountIncentiveStateService.getPendingTransactions(quoteId);
+    const items: any[] = [];
+
+    pendingTransactions.forEach((tx: any, txIndex: number) => {
+      const records = tx.graph?.records || [];
+      records.forEach((rec: any, recIndex: number) => {
+        const record = rec.record;
+        if (record.attributes?.type === 'Quote') return;
+        if (record.attributes?.type === 'QuoteLineItem') {
+          const hasDiscount = record.Discount !== undefined;
+          const hasIncentive = record.Incentive__c !== undefined;
+          const matchesMode = isDiscount ? hasDiscount : hasIncentive;
+          if (!matchesMode) return;
+
+          // Find matching validation error for this product
+          const productName = record.Product2?.Name ||
+            record.ProductName ||
+            record.Name ||
+            this.discountsIncentives?.resolveProductDisplayName(record.Product2Id) ||
+            record.Product2Id ||
+            'Unknown Product';
+          const nodeType = isDiscount ? 'Discount' : 'Incentive';
+          const nodeId = `GCP_${nodeType}_Line_${txIndex}_${recIndex}`;
+          const matchedErrors = this.validationErrors.filter(e => 
+            e.message.toLowerCase().includes(productName.toLowerCase()) ||
+            e.relatedRecordId === record.Product2Id ||
+            e.relatedRecordId === rec.referenceId ||
+            e.relatedRecordId === nodeId
+          );
+          if (matchedErrors.length === 0) return;
+
+          const remarks = matchedErrors.map(e => e.message).join('\n');
+          const messageType = matchedErrors[0]?.messageType || 'error';
+
+          items.push({
+            id: record.Product2Id || record.Id || `item_${Math.random().toString(36).substr(2, 9)}`,
+            name: productName,
+            product2Id: record.Product2Id,
+            remarks,
+            messageType,
+            selected: false,
+            value: isDiscount ? (record.Discount || 0) : (record.Incentive__c || ''),
+            deleted: false
+          });
+        }
+      });
+    });
+
+    return items;
+  }
+
+  closeErrorProductsPanel() {
+    this.showErrorProductsPanel = false;
+  }
+
+  onErrorProductsSubmit(payload: any) {
+    console.log('[CommitConfiguration] Error products update payload:', payload);
+    this.discountIncentiveStateService.applyPendingTransactionChanges(
+      this.quoteId || this.contextService.currentContext?.quoteId || '',
+      payload.mode,
+      payload.edits || [],
+      payload.deletes || []
+    );
+    this.showErrorProductsPanel = false;
+    this.toastService.show('Products updated. Click Save to re-submit.', 'info');
+  }
+
   onSave(onSuccess?: () => void) {
     const fullQuoteId = this.quoteId || this.contextService.currentContext?.quoteId;
+    const mappingId = this.contextService.quoteEntitiesMappingId;
+
     if (!fullQuoteId) {
       this.toastService.show('Quote ID not found', 'error');
       return;
     }
 
+    if (!mappingId) {
+      this.toastService.show('Context Mapping ID not found. Please reload the page.', 'error');
+      return;
+    }
+
+    // Clear previous validation errors
+    this.clearValidationErrors();
+
     this.loadingService.show();
 
-    this.sfApi.getQuoteLineItems(fullQuoteId).pipe(
-      switchMap((lineItemsResponse: any) => {
-        const quoteLineItems: any[] = [];
-        if (lineItemsResponse.records && lineItemsResponse.records.length > 0) {
-          const matchingLine = lineItemsResponse.records.find((r: any) => r.Product2Id === this.productId);
-          const lineItemId = this.quoteLineId || (matchingLine ? matchingLine.Id : lineItemsResponse.records[0].Id);
-          
-          quoteLineItems.push({
-            id: lineItemId,
-            commitmentAmount: this.totalContractValue
-          });
-          
-          return this.sfApi.updateQuoteDates(
-            fullQuoteId,
-            this.startDate,
-            this.expirationDate,
-            this.totalTerms,
-            this.totalContractValue,
-            quoteLineItems
-          ).pipe(map(() => lineItemsResponse));
-        } else {
-          throw new Error('No QuoteLineItems found');
-        }
-      }),
-      switchMap((lineItemsResponse: any) => {
-        const matchingLine = lineItemsResponse.records.find((r: any) => r.Product2Id === this.productId);
-        const targetLineId = this.quoteLineId || (matchingLine ? matchingLine.Id : lineItemsResponse.records[0].Id);
-        const commitmentRecords = this.buildCommitmentRecords(fullQuoteId, targetLineId);
+    // 1. Build all Added Nodes
+    const allAddedNodes = this.buildAddedNodes(fullQuoteId);
+    
+    // 2. Chunk nodes (e.g., 400 per batch)
+    const chunks = this.chunkArray(allAddedNodes, 400);
+    const contextIds: string[] = [];
 
-        if (commitmentRecords.length > 0) {
-          return this.sfApi.createQuoteLineCommitments(commitmentRecords);
-        } else {
-          return of({ success: true, message: 'No commitments to create' });
-        }
+    console.log(`[CommitConfiguration] Starting batched save for ${allAddedNodes.length} nodes in ${chunks.length} batches.`);
+
+    // 3. Process batches sequentially: setInstance -> addNodes, checking for configurator messages
+    from(chunks).pipe(
+      concatMap((chunk, index) => {
+        console.log(`[CommitConfiguration] Processing batch ${index + 1}/${chunks.length} (${chunk.length} nodes)`);
+        return this.sfApi.setInstance(mappingId, fullQuoteId).pipe(
+          switchMap((setRes: any) => {
+            const contextId = setRes.contextId;
+            if (!contextId) throw new Error(`Batch ${index + 1}: Failed to get contextId`);
+            contextIds.push(contextId);
+            return this.sfApi.addNodes(contextId, chunk).pipe(
+              map((addNodesRes: any) => {
+                // Check for configuratorMessages in each batch response
+                const parsed = this.parseConfiguratorMessages(addNodesRes);
+                console.log(`[CommitConfiguration] Batch ${index + 1} configurator messages:`, parsed);
+
+                if (parsed.hasMessages) {
+                  this.validationErrors = [...this.validationErrors, ...parsed.all.map(e => ({
+                    message: e.message,
+                    messageType: e.messageType,
+                    category: e.category,
+                    relatedRecordId: e.relatedRecordId
+                  }))];
+                  this.hasValidationErrors = true;
+
+                  // Emit to parent for header validation panel
+                  this.validationMessagesReceived.emit({
+                    productId: this.productId || '',
+                    productName: this.getActualProductNames(fullQuoteId),
+                    messages: parsed.all
+                  });
+
+                  throw { isValidationError: true, message: 'Configurator messages found. Fix issues and try again.' };
+                }
+
+                return addNodesRes;
+              })
+            );
+          })
+        );
       }),
+      toArray(), // Collect results of all addNodes calls
       switchMap(() => {
-        // Execute pending discounts, incentives, and bulk uploads sequentially
-        const pendingTransactions = this.discountIncentiveStateService.getPendingTransactions(fullQuoteId);
-        if (pendingTransactions.length > 0) {
-          return from(pendingTransactions).pipe(
-            concatMap(payload => this.sfApi.placeSalesTransaction(payload)),
-            toArray()
-          );
-        } else {
-          return of([]);
-        }
+        // 4. Final Save Instance: Only if no validation errors
+        console.log(`[CommitConfiguration] Saving ${contextIds.length} batches sequentially...`);
+        return from(contextIds).pipe(
+          concatMap(id => this.sfApi.saveInstance(id)),
+          toArray() // Wait for all saves to finish
+        );
       })
     ).subscribe({
       next: (res: any) => {
-        // Clear queue upon success
         this.discountIncentiveStateService.clearPendingTransactions(fullQuoteId);
         this.loadingService.hide();
-        this.toastService.show('Quote Data Saved Successfully!', 'success');
+
+        // Clear errors on successful save
+        this.clearValidationErrors();
+        this.validationMessagesReceived.emit({
+          productId: this.productId || '',
+          productName: this.getActualProductNames(fullQuoteId),
+          messages: []
+        });
+
+        this.toastService.show('Configuration Saved Successfully!', 'success');
         if (onSuccess) onSuccess();
       },
       error: (err) => {
         this.loadingService.hide();
+
+        // If it's a validation error we threw, don't show a generic error
+        if (err?.isValidationError) {
+          console.warn('[CommitConfiguration] Blocked by validation errors.');
+          return;
+        }
+
         console.error('[CommitConfiguration] Save Error:', err);
-        this.toastService.show(err.message || 'Failed to save configuration data.', 'error');
+        this.toastService.show(err.message || 'Failed to save configuration.', 'error');
       }
     });
   }
 
-  private buildCommitmentRecords(quoteId: string, qliId: string): any[] {
-    if (!this.startDate) return [];
+  private chunkArray(array: any[], size: number): any[][] {
+    const chunks = [];
+    for (let i = 0; i < array.length; i += size) {
+      chunks.push(array.slice(i, i + size));
+    }
+    return chunks;
+  }
 
-    const records: any[] = [];
-    const parts = this.startDate.split('-');
-    let currentStart = new Date(Date.UTC(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2])));
+  private buildAddedNodes(quoteId: string): any[] {
+    const nodes: any[] = [];
+    
+    const parentPath = [quoteId, "GCP_Parent_Platform"];
+    const parentProductId = this.productId || "01tDz00000Eah7vIAB";
+    if (!parentProductId) {
+      console.warn("[CommitConfiguration] Skipping parent product node: productId is null.");
+    } else {
+      nodes.push({
+        "path": parentPath,
+        "addedObject": {
+          "id": "GCP_Parent_Platform",
+          "SalesTransactionItemSource": "GCP_Parent_Platform",
+          "PricebookEntry": "01uDz00000dvDfbIAE",
+          "businessObjectType": "QuoteLineItem",
+          "Quantity": 1,
+          "ItemSortOrder": 1,
+          "Product": parentProductId,
+          "StartDate": this.startDate ? new Date(this.startDate).toISOString() : new Date().toISOString(),
+          "EndDate": this.contractEndDate ? new Date(this.contractEndDate).toISOString() : new Date().toISOString(),
+          "SalesTransactionItemParent": quoteId
+        }
+      });
+    }
 
+    // 2. Commitment Detail Nodes
     this.commitmentPeriods.forEach((period, index) => {
       const months = parseInt(period.months) || 0;
       const amount = Number(period.amount) || 0;
-
       if (months > 0) {
-        const endDate = new Date(currentStart);
-        endDate.setUTCMonth(endDate.getUTCMonth() + months);
-        endDate.setUTCDate(endDate.getUTCDate() - 1);
-
-        records.push({
-          attributes: { type: 'Commitment_Details__c', referenceId: `ref${index + 1}` },
-          Name: `CommitPeriod${index + 1}`,
-          Periods_Months__c: months.toString(),
-          Quote__c: quoteId,
-          Quote_Line_Item__c: qliId,
-          Start_Date__c: this.formatDateForSalesforce(currentStart),
-          End_Date__c: this.formatDateForSalesforce(endDate),
-          Commit_Amount__c: amount.toString()
+        nodes.push({
+          "path": [...parentPath, `Commitment_Detail_${index}`],
+          "addedObject": {
+            "id": `Commitment_Detail_${index}`,
+            "ParentReference": "GCP_Parent_Platform",
+            "CommitmentName__c": `Commitment Period ${index + 1}`,
+            "Quote__c": quoteId,
+            "CommitmentPeriod__c": months,
+            "CommitmentAmount__c": amount,
+            "Start_Date__c": this.startDate,
+            "End_Date__c": this.contractEndDate,
+            "businessObjectType": "Commitment_Details__c",
+            "QuoteLine__c": "GCP_Parent_Platform",
+            "Sourceid__c": `Commitment_Detail_${index}`
+          }
         });
-        currentStart = new Date(endDate);
-        currentStart.setUTCDate(currentStart.getUTCDate() + 1);
       }
     });
-    return records;
+
+    // 3. Extract Discount and Incentive Nodes from Pending Transactions
+    // These were staged in the service when "Add Discount" or "Add Incentive" was clicked
+    const pendingTransactions = this.discountIncentiveStateService.getPendingTransactions(quoteId);
+    
+    pendingTransactions.forEach((tx: any, txIndex: number) => {
+      const records = tx.graph?.records || [];
+      records.forEach((rec: any, recIndex: number) => {
+        const record = rec.record;
+        // Skip the Quote PATCH record
+        if (record.attributes?.type === 'Quote') return;
+
+        if (record.attributes?.type === 'QuoteLineItem') {
+          const isIncentive = record.Incentive__c !== undefined;
+          const nodeType = isIncentive ? 'Incentive' : 'Discount';
+          const nodeId = `GCP_${nodeType}_Line_${txIndex}_${recIndex}`;
+          
+          // Defensive Check: Only add if we have Product and PricebookEntry
+          if (!record.Product2Id || !record.PricebookEntryId) {
+            console.warn(`[CommitConfiguration] Skipping ${nodeType} node ${nodeId} due to missing Product2Id or PricebookEntryId`, record);
+            return;
+          }
+
+          const node: any = {
+            "path": [quoteId, nodeId],
+            "addedObject": {
+              "id": nodeId,
+              "SalesTransactionItemSource": nodeId,
+              "PricebookEntry": record.PricebookEntryId,
+              "businessObjectType": "QuoteLineItem",
+              "Quantity": record.Quantity || 1,
+              "Product": record.Product2Id,
+              "SalesTransactionItemParent": quoteId,
+              "StartDate": record.StartDate ? new Date(record.StartDate).toISOString() : null,
+              "EndDate": record.EndDate ? new Date(record.EndDate).toISOString() : null,
+              "PeriodBoundary": record.PeriodBoundary || "Anniversary",
+              "ItemSortOrder": record.SortOrder || (2 + txIndex + recIndex)
+            }
+          };
+
+          // Add discount or incentive specific field
+          if (isIncentive) {
+            node.addedObject["Incentive__c"] = record.Incentive__c;
+          } else {
+            node.addedObject["Discount"] = record.Discount;
+            if (record.SubscriptionTerm) {
+              node.addedObject["SubscriptionTerm"] = record.SubscriptionTerm;
+            }
+          }
+
+          nodes.push(node);
+        }
+      });
+    });
+
+    return nodes;
   }
 
-  formatDateForSalesforce(date: Date): string {
-    const year = date.getUTCFullYear();
-    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-    const day = String(date.getUTCDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+  private getActualProductNames(quoteId: string): string {
+    const productNames = new Set<string>();
+    const pendingTransactions = this.discountIncentiveStateService.getPendingTransactions(quoteId);
+
+    pendingTransactions.forEach((tx: any) => {
+      const records = tx.graph?.records || [];
+      records.forEach((rec: any) => {
+        const record = rec.record;
+        if (record.attributes?.type === 'Quote' || record.attributes?.type !== 'QuoteLineItem') return;
+
+        const productName = record.Product2?.Name ||
+          record.ProductName ||
+          record.Name ||
+          this.discountsIncentives?.resolveProductDisplayName(record.Product2Id) ||
+          record.Product2Id ||
+          'Unknown Product';
+        
+        if (productName) {
+          productNames.add(productName);
+        }
+      });
+    });
+
+    // Return comma-separated list of unique product names, or fall back to input productName
+    return productNames.size > 0 ? Array.from(productNames).join(', ') : (this.productName || 'Google Cloud Platform RCA');
   }
 
   formatCurrency(value: any): string {

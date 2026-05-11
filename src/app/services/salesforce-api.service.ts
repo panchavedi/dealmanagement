@@ -102,6 +102,119 @@ export class SalesforceApiService {
     }
 
     /**
+     * Fetches the ContextMapping ID for QuoteEntitiesMapping
+     */
+    getContextMappingId(): Observable<string | null> {
+        const method = 'SalesforceApiService.getContextMappingId';
+        const token = this.contextService.accessToken;
+        const baseUrl = this.contextService.apiBaseUrl || 'https://vector--rcaagivant.sandbox.my.salesforce.com';
+
+        const query = "SELECT Id,Title,ContextDefinitionVersionId,IsDefault,CreatedDate FROM ContextMapping WHERE Title='QuoteEntitiesMapping' AND ContextDefinitionVersionId='11pDz000000000LIAQ'";
+        const encodedQuery = encodeURIComponent(query);
+        const url = `${baseUrl}/services/data/v60.0/query/?q=${encodedQuery}`;
+
+        const headers = new HttpHeaders({
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        });
+
+        return this.http.get(url, { headers }).pipe(
+            map((res: any) => (res.records && res.records.length > 0) ? res.records[0].Id : null),
+            tap(id => console.log(`[API Response] ${method} Found ID:`, id)),
+            catchError(err => this.handleError(method, err))
+        );
+    }
+
+    /**
+     * Initializes a CPQ configurator instance
+     */
+    setInstance(contextMappingId: string, quoteId: string): Observable<any> {
+        const method = 'SalesforceApiService.setInstance';
+        const token = this.contextService.accessToken;
+        const baseUrl = this.contextService.apiBaseUrl || 'https://vector--rcaagivant.sandbox.my.salesforce.com';
+        const url = `${baseUrl}/services/data/v66.0/connect/cpq/configurator/actions/set-instance`;
+
+        const payload = {
+            "configuratorOptions": {
+                "addDefaultConfiguration": false,
+                "executeConfigurationRules": false,
+                "executePricing": false,
+                "qualifyAllProductsInTransaction": false,
+                "validateAmendRenewCancel": false,
+                "validateProductCatalog": false
+            },
+            "contextMappingId": contextMappingId,
+            "transaction": JSON.stringify({
+                "Quote": [{ "id": quoteId, "businessObjectType": "Quote" }]
+            })
+        };
+
+        const headers = new HttpHeaders({
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        });
+
+        return this.http.post(url, payload, { headers }).pipe(
+            tap(res => console.log(`[API Response] ${method}`, res)),
+            catchError(err => this.handleError(method, err))
+        );
+    }
+
+    /**
+     * Adds nodes (QuoteLineItems, Commitments, etc.) to a CPQ configurator instance
+     */
+    addNodes(contextId: string, addedNodes: any[]): Observable<any> {
+        const method = 'SalesforceApiService.addNodes';
+        const token = this.contextService.accessToken;
+        const baseUrl = this.contextService.apiBaseUrl || 'https://vector--rcaagivant.sandbox.my.salesforce.com';
+        const url = `${baseUrl}/services/data/v66.0/connect/cpq/configurator/actions/add-nodes`;
+
+        const payload = {
+            "configuratorOptions": {
+                "executePricing": true,
+                "addDefaultConfiguration": false,
+                "executeConfigurationRules": true
+            },
+            "contextId": contextId,
+            "addedNodes": addedNodes
+        };
+
+        console.log(`[API Request] ${method}`, JSON.stringify(payload, null, 2));
+
+        const headers = new HttpHeaders({
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        });
+
+        return this.http.post(url, payload, { headers }).pipe(
+            tap(res => console.log(`[API Response] ${method}`, res)),
+            catchError(err => this.handleError(method, err))
+        );
+    }
+
+    /**
+     * Saves a CPQ configurator instance
+     */
+    saveInstance(contextId: string): Observable<any> {
+        const method = 'SalesforceApiService.saveInstance';
+        const token = this.contextService.accessToken;
+        const baseUrl = this.contextService.apiBaseUrl || 'https://vector--rcaagivant.sandbox.my.salesforce.com';
+        const url = `${baseUrl}/services/data/v66.0/connect/cpq/configurator/actions/save-instance`;
+
+        const payload = { "contextId": contextId };
+
+        const headers = new HttpHeaders({
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        });
+
+        return this.http.post(url, payload, { headers }).pipe(
+            tap(res => console.log(`[API Response] ${method}`, res)),
+            catchError(err => this.handleError(method, err))
+        );
+    }
+
+    /**
      * Fetches account details from Salesforce REST API
      * @param accountId The Salesforce Account ID
      * @returns Observable of account details
@@ -130,8 +243,8 @@ export class SalesforceApiService {
     /**
      * Creates a Quote with Quote Lines using the Salesforce Composite Graph API
      */
-    createQuoteWithLines(opportunityId: string, pricebookId: string, items: any[]): Observable<any> {
-        const method = 'SalesforceApiService.createQuoteWithLines';
+    createQuote(opportunityId: string, pricebookId: string, items: any[]): Observable<any> {
+        const method = 'SalesforceApiService.createQuote';
         const token = this.contextService.accessToken;
         const baseUrl = this.contextService.apiBaseUrl || 'https://vector--rcaagivant.sandbox.my.salesforce.com';
         const url = `${baseUrl}/services/data/v65.0/connect/rev/sales-transaction/actions/place`;
@@ -276,7 +389,7 @@ export class SalesforceApiService {
                     "taxPref": "Skip",
                     "contextDetails": {},
                     "graph": {
-                        "graphId": "createQuoteWithBundle",
+                        "graphId": "createQuote",
                         "records": records
                     }
                 };
@@ -315,6 +428,64 @@ export class SalesforceApiService {
         });
 
         return this.http.get(url, { headers }).pipe(
+            tap(response => console.log(`[API Response] ${method}`, response)),
+            catchError(err => this.handleError(method, err))
+        );
+    }
+
+    /**
+     * Loads a configurator instance for a transaction
+     */
+    loadConfiguratorInstance(transactionId: string): Observable<any> {
+        const method = 'SalesforceApiService.loadConfiguratorInstance';
+        const token = this.contextService.accessToken;
+        const baseUrl = this.contextService.apiBaseUrl || 'https://vector--rcaagivant.sandbox.my.salesforce.com';
+        const url = `${baseUrl}/services/data/v66.0/connect/cpq/configurator/actions/load-instance`;
+
+        const body = {
+            "configuratorOptions": {
+                "addDefaultConfiguration": false,
+                "executeConfigurationRules": false,
+                "executePricing": false,
+                "qualifyAllProductsInTransaction": false,
+                "validateAmendRenewCancel": false,
+                "validateProductCatalog": false
+            },
+            "transactionId": transactionId
+        };
+
+        console.log(`[API Request] ${method}`, { url, body });
+
+        const headers = new HttpHeaders({
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        });
+
+        return this.http.post(url, body, { headers }).pipe(
+            tap(response => console.log(`[API Response] ${method}`, response)),
+            catchError(err => this.handleError(method, err))
+        );
+    }
+
+    /**
+     * Gets a configurator instance by context ID
+     */
+    getConfiguratorInstance(contextId: string): Observable<any> {
+        const method = 'SalesforceApiService.getConfiguratorInstance';
+        const token = this.contextService.accessToken;
+        const baseUrl = this.contextService.apiBaseUrl || 'https://vector--rcaagivant.sandbox.my.salesforce.com';
+        const url = `${baseUrl}/services/data/v66.0/connect/cpq/configurator/actions/get-instance`;
+
+        const body = { "contextId": contextId };
+
+        console.log(`[API Request] ${method}`, { url, body });
+
+        const headers = new HttpHeaders({
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        });
+
+        return this.http.post(url, body, { headers }).pipe(
             tap(response => console.log(`[API Response] ${method}`, response)),
             catchError(err => this.handleError(method, err))
         );
@@ -464,7 +635,6 @@ export class SalesforceApiService {
 
         // Exact query requested by the user for v60.0
         const query = `SELECT Id,Product2Id,Product2.Name,Product2.Type FROM QuoteLineItem WHERE QuoteId='${quoteId}' AND Product2.Type='Bundle'`;
-        const encodedQuery = encodeURIComponent(query).replace(/'/g, "%27"); // ensure quotes are properly handled if needed, encodeURIComponent does not encode '
         const url = `${baseUrl}/services/data/v60.0/query/?q=SELECT+Id,Product2Id,Product2.Name,Product2.Type+FROM+QuoteLineItem+WHERE+QuoteId='${quoteId}'+AND+Product2.Type='Bundle'`;
 
         console.log(`[API Request] ${method}`, { url, quoteId });
@@ -508,32 +678,6 @@ export class SalesforceApiService {
         );
     }
 
-    /**
-     * Fetches Contact details from Salesforce REST API
-     * @param contactId The Salesforce Contact ID
-     * @returns Observable of contact details
-     */
-    getContactDetails(contactId: string): Observable<any> {
-        const method = 'SalesforceApiService.getContactDetails';
-        const token = this.contextService.accessToken;
-        const baseUrl = this.contextService.apiBaseUrl || 'https://vector--rcaagivant.sandbox.my.salesforce.com';
-        const url = `${baseUrl}/services/data/v65.0/sobjects/Contact/${contactId}`;
-
-        console.log(`[API Request] ${method}`, { url });
-
-        const headers = new HttpHeaders({
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-        });
-
-        return this.http.get(url, { headers }).pipe(
-            tap(response => console.log(`[API Response] ${method}`, response)),
-            catchError(err => this.handleError(method, err))
-        );
-    }
-    /**
-     * Updates Quote Start and Expiry dates via Salesforce REST PATCH
-     */
     /**
      * Updates Quote Start and Expiry dates + Commitment Totals via Salesforce Graph API
      */
@@ -598,6 +742,74 @@ export class SalesforceApiService {
             catchError(err => {
                 return this.handleError(method, err);
             })
+        );
+    }
+
+    /**
+     * Submits a Salesforce Graph API transaction
+     * @param payload The graph payload containing records to be processed
+     * @returns Observable of the transaction result
+     */
+    placeSalesTransaction(payload: any): Observable<any> {
+        const method = 'SalesforceApiService.placeSalesTransaction';
+        const token = this.contextService.accessToken;
+        const baseUrl = this.contextService.apiBaseUrl || 'https://vector--rcaagivant.sandbox.my.salesforce.com';
+        const url = `${baseUrl}/services/data/v65.0/connect/rev/sales-transaction/actions/place`;
+
+        console.log(`[API Request] ${method}`, { url, payload });
+
+        const headers = new HttpHeaders({
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        });
+
+        // The endpoint expects a specific structure for pricing/tax/etc.
+        // If the payload already has the 'graph' property, we wrap it with defaults if needed.
+        const body = payload.graph ? {
+            "pricingPref": "Skip",
+            "catalogRatesPref": "Skip",
+            "configurationPref": {
+                "configurationMethod": "Skip",
+                "configurationOptions": {
+                    "validateProductCatalog": true,
+                    "validateAmendRenewCancel": true,
+                    "executeConfigurationRules": true,
+                    "addDefaultConfiguration": true
+                }
+            },
+            "taxPref": "Skip",
+            "contextDetails": {},
+            ...payload
+        } : payload;
+
+        return this.http.post(url, body, { headers }).pipe(
+            tap(response => console.log(`[API Response] ${method}`, response)),
+            catchError(err => this.handleError(method, err))
+        );
+    }
+
+
+    /**
+     * Fetches Contact details from Salesforce REST API
+     * @param contactId The Salesforce Contact ID
+     * @returns Observable of contact details
+     */
+    getContactDetails(contactId: string): Observable<any> {
+        const method = 'SalesforceApiService.getContactDetails';
+        const token = this.contextService.accessToken;
+        const baseUrl = this.contextService.apiBaseUrl || 'https://vector--rcaagivant.sandbox.my.salesforce.com';
+        const url = `${baseUrl}/services/data/v65.0/sobjects/Contact/${contactId}`;
+
+        console.log(`[API Request] ${method}`, { url });
+
+        const headers = new HttpHeaders({
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        });
+
+        return this.http.get(url, { headers }).pipe(
+            tap(response => console.log(`[API Response] ${method}`, response)),
+            catchError(err => this.handleError(method, err))
         );
     }
 
@@ -754,48 +966,6 @@ export class SalesforceApiService {
         );
     }
 
-    /**
-     * Submits a Salesforce Graph API transaction
-     * @param payload The graph payload containing records to be processed
-     * @returns Observable of the transaction result
-     */
-    placeSalesTransaction(payload: any): Observable<any> {
-        const method = 'SalesforceApiService.placeSalesTransaction';
-        const token = this.contextService.accessToken;
-        const baseUrl = this.contextService.apiBaseUrl || 'https://vector--rcaagivant.sandbox.my.salesforce.com';
-        const url = `${baseUrl}/services/data/v65.0/connect/rev/sales-transaction/actions/place`;
-
-        console.log(`[API Request] ${method}`, { url, payload });
-
-        const headers = new HttpHeaders({
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-        });
-
-        // The endpoint expects a specific structure for pricing/tax/etc.
-        // If the payload already has the 'graph' property, we wrap it with defaults if needed.
-        const body = payload.graph ? {
-            "pricingPref": "Skip",
-            "catalogRatesPref": "Skip",
-            "configurationPref": {
-                "configurationMethod": "Skip",
-                "configurationOptions": {
-                    "validateProductCatalog": true,
-                    "validateAmendRenewCancel": true,
-                    "executeConfigurationRules": true,
-                    "addDefaultConfiguration": true
-                }
-            },
-            "taxPref": "Skip",
-            "contextDetails": {},
-            ...payload
-        } : payload;
-
-        return this.http.post(url, body, { headers }).pipe(
-            tap(response => console.log(`[API Response] ${method}`, response)),
-            catchError(err => this.handleError(method, err))
-        );
-    }
 
 
     /**

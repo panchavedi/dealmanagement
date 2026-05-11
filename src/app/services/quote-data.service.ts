@@ -9,7 +9,7 @@ export interface QuoteData {
     website: string | null;
     pricebook2Id: string | null;
     quoteId: string | null;
-    quoteNumber: string | null;
+    quoteName: string | null;
     primaryContactName: string | null;
     salesChannel: string | null;
     productName: string | null;
@@ -26,7 +26,7 @@ const EMPTY_QUOTE_DATA: QuoteData = {
     website: null,
     pricebook2Id: null,
     quoteId: null,
-    quoteNumber: null,
+    quoteName: null,
     primaryContactName: null,
     salesChannel: null,
     productName: null,
